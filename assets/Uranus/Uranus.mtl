@@ -1,0 +1,12 @@
+# Blender 4.5.3 LTS MTL File: 'None'
+# www.blender.org
+
+newmtl PlanetUranus
+Ns 3.821480
+Ka 0.120000 0.120000 0.120000
+Ks 0.920000 0.920000 0.920000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 3
+map_Kd textures/2k_uranus.jpg
