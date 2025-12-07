@@ -6,8 +6,8 @@ function SolarSystemSprites()
 
     %=============== Adjust these values for experimentation ===============
     timeSpeedFactor    = 200;   % simulation days per real second
-    distanceScale      = 0.85; % scales AU distances to on-screen units
-    artisticSizeScale  = 1.0;  % multiplies sprite footprint (make >1 for larger planets)
+    distanceScale      = 1.30;  % scales AU distances to on-screen units (bigger = more separation)
+    artisticSizeScale  = 1.0;   % multiplies sprite footprint (make >1 for larger planets)
     %==========================================================================
 
     scriptDir   = fileparts(mfilename('fullpath'));
@@ -18,9 +18,10 @@ function SolarSystemSprites()
     nameToIndex = containers.Map({bodies.name}, 1:numel(bodies));
 
     maxSemiMajor = max([bodies.a]);
-    axesLimit = maxSemiMajor * distanceScale * 1.35; % ensure all orbits are inside view
+    axesLimit = maxSemiMajor * distanceScale * 1.45; % ensure all orbits are inside view
 
-    fig = figure('Name','2D Sprite Solar System','Color','k','MenuBar','none','ToolBar','none');
+    fig = figure('Name','2D Sprite Solar System','Color','k','MenuBar','none','ToolBar','none', ...
+                 'Position',[80 80 1200 1100]);
     ax  = axes('Parent',fig);
     hold(ax,'on');
     axis(ax,'equal');
@@ -35,15 +36,29 @@ function SolarSystemSprites()
     ax.YDir = 'normal';
     uistack(bgHandle,'bottom');
 
-    % draw static orbits
     theta = linspace(0, 2*pi, 360);
-    for b = bodies
-        if b.a > 0 && strcmp(b.centralBody, 'Sun')
-            scaledA = b.a * distanceScale;
+    relativeOrbitHandles = gobjects(numel(bodies),1);
+    relativeOrbitX = cell(numel(bodies),1);
+    relativeOrbitY = cell(numel(bodies),1);
+    orbitParents = nan(numel(bodies),1);
+
+    for idx = 1:numel(bodies)
+        b = bodies(idx);
+        if b.a > 0
+            scaledA = b.a * distanceScale * b.orbitScale;
             bSemi   = scaledA * sqrt(1 - b.e^2);
             orbitX  = scaledA * (cos(theta) - b.e);
             orbitY  = bSemi * sin(theta);
-            plot(ax, orbitX, orbitY, 'Color', [0.6 0.6 0.65], 'LineWidth', 0.5);
+
+            if strcmp(b.centralBody, 'Sun')
+                plot(ax, orbitX, orbitY, 'Color', [0.6 0.6 0.65], 'LineWidth', 0.5);
+            else
+                orbitParents(idx) = nameToIndex(b.centralBody);
+                relativeOrbitX{idx} = orbitX;
+                relativeOrbitY{idx} = orbitY;
+                relativeOrbitHandles(idx) = plot(ax, orbitX, orbitY, 'Color', [0.6 0.6 0.65], ...
+                                                 'LineWidth', 0.4, 'LineStyle', '--');
+            end
         end
     end
 
@@ -96,6 +111,15 @@ function SolarSystemSprites()
 
         scaledPositions = currentPositions * distanceScale;
 
+        for idx = 1:numel(relativeOrbitHandles)
+            if isgraphics(relativeOrbitHandles(idx)) && ~isnan(orbitParents(idx))
+                parentPos = scaledPositions(orbitParents(idx),:);
+                set(relativeOrbitHandles(idx), ...
+                    'XData', relativeOrbitX{idx} + parentPos(1), ...
+                    'YData', relativeOrbitY{idx} + parentPos(2));
+            end
+        end
+
         for idx = 1:numel(transforms)
             worldPos = [scaledPositions(idx,:), 0];
             set(transforms(idx), 'Matrix', makehgtform('translate', worldPos));
@@ -113,9 +137,9 @@ function bodies = defineBodies(sizeScale)
     periods = [1, 88, 224.7, 365.25, 687, 4331, 10747, 30589, 59800, 27.3];
     spriteFiles = {'sun.png','mercury.png','venus.png','earth.png','mars.png',...
                    'jupiter.png','saturn.png','uranus.png','neptune.png','moon.png'};
-    displayWidths = [3.0, 0.35, 0.44, 0.55, 0.38, 1.15, 1.5, 1.0, 0.9, 0.28];
-    displayHeights = [3.0, 0.35, 0.44, 0.55, 0.38, 1.15, 0.95, 1.0, 0.9, 0.28];
-    orbitScales = [1, 1, 1, 1, 1, 1, 1, 1, 1, 35];
+    displayWidths = [0.25, 0.14, 0.18, 0.24, 0.17, 0.52, 0.70, 0.42, 0.40, 0.07];
+    displayHeights = [0.25, 0.14, 0.18, 0.24, 0.17, 0.52, 0.46, 0.42, 0.40, 0.07];
+    orbitScales = [1, 1, 1, 1, 1, 1, 1, 1, 1, 400];
 
     centralBodies = {'Sun','Sun','Sun','Sun','Sun','Sun','Sun','Sun','Sun','Earth'};
 
