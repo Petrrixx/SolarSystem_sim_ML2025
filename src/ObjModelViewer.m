@@ -15,11 +15,27 @@ classdef ObjModelViewer
             fig = figure('Name', sprintf('%s 3D Model', titleText), ...
                 'Color', [0 0 0], 'ToolBar', 'figure', 'MenuBar', 'figure');
             ax = axes('Parent', fig, 'Color', [0 0 0]);
-            p = patch(ax, 'Vertices', mesh.V, 'Faces', mesh.F, ...
-                'FaceColor', 'interp', 'EdgeColor', 'none', ...
-                'FaceVertexCData', mesh.VertexColor, ...
-                'VertexNormals', mesh.VN, ...
-                'BackFaceLighting', 'reverselit');
+            useTexture = ~isempty(tex.Image) && isfield(mesh, 'UV') && ~isempty(mesh.UV) && ~all(isnan(mesh.UV(:)));
+            if useTexture
+                uv = mesh.UV;
+                uv(:,2) = 1 - uv(:,2); % flip V to match image origin
+                uv(isnan(uv)) = 0;
+                uv = min(max(uv, 0), 1);
+                p = patch(ax, 'Vertices', mesh.V, 'Faces', mesh.F, ...
+                    'FaceVertexCData', uv, ...
+                    'FaceColor', 'texturemap', ...
+                    'EdgeColor', 'none', ...
+                    'CData', tex.Image, ...
+                    'CDataMapping', 'direct', ...
+                    'VertexNormals', mesh.VN, ...
+                    'BackFaceLighting', 'reverselit');
+            else
+                p = patch(ax, 'Vertices', mesh.V, 'Faces', mesh.F, ...
+                    'FaceColor', 'interp', 'EdgeColor', 'none', ...
+                    'FaceVertexCData', mesh.VertexColor, ...
+                    'VertexNormals', mesh.VN, ...
+                    'BackFaceLighting', 'reverselit');
+            end
             axis(ax, 'equal');
             axis(ax, 'vis3d');
             grid(ax, 'on');
@@ -72,13 +88,13 @@ classdef ObjModelViewer
                     end
                 elseif startsWith(line, 'f ')
                     parts = strsplit(line);
-                    idxs = zeros(1, numel(parts)-1);
+                    vIdx = zeros(1, numel(parts)-1);
                     tIdx = nan(1, numel(parts)-1);
                     nIdx = nan(1, numel(parts)-1);
                     for k = 2:numel(parts)
                         tok = parts{k};
                         splitTok = strsplit(tok, '/');
-                        idxs(k-1) = str2double(splitTok{1});
+                        vIdx(k-1) = str2double(splitTok{1});
                         if numel(splitTok) >= 2 && ~isempty(splitTok{2})
                             tIdx(k-1) = str2double(splitTok{2});
                         end
@@ -86,10 +102,11 @@ classdef ObjModelViewer
                             nIdx(k-1) = str2double(splitTok{3});
                         end
                     end
-                    if numel(idxs) >= 3 && all(~isnan(idxs))
-                        faces = ObjModelViewer.triangulateFace(faces, idxs); %#ok<AGROW>
-                        faceTex{end+1} = tIdx; %#ok<AGROW>
-                        faceNorm{end+1} = nIdx; %#ok<AGROW>
+                    if numel(vIdx) >= 3 && all(~isnan(vIdx))
+                        [triFaces, triTex, triNorm] = ObjModelViewer.triangulateFace(vIdx, tIdx, nIdx);
+                        faces = [faces; triFaces]; %#ok<AGROW>
+                        faceTex(end+1:end+numel(triTex)) = triTex; %#ok<AGROW>
+                        faceNorm(end+1:end+numel(triNorm)) = triNorm; %#ok<AGROW>
                     end
                 elseif startsWith(line, 'vt')
                     nums = sscanf(line(4:end), '%f');
@@ -106,27 +123,39 @@ classdef ObjModelViewer
             fclose(fid);
 
             tex = ObjModelViewer.readMtl(path, mtlFile);
-            vertexColor = ObjModelViewer.assignVertexColors(faces, faceTex, texCoords, tex);
-            if isempty(vertexColor)
-                vertexColor = repmat([0.7 0.75 0.85], size(verts,1), 1);
-            end
-
-            if isempty(normals)
-                VN = ObjModelViewer.computeNormals(verts, faces);
+            [Vnew, Fnew, UV, VN] = ObjModelViewer.buildMeshWithUV(verts, faces, faceTex, texCoords, faceNorm, normals);
+            if isempty(VN)
+                VN = ObjModelViewer.computeNormals(Vnew, Fnew);
             else
-                VN = ObjModelViewer.expandNormals(faces, faceNorm, normals, size(verts,1));
+                missing = any(isnan(VN),2);
+                if any(missing)
+                    comp = ObjModelViewer.computeNormals(Vnew, Fnew);
+                    VN(missing, :) = comp(missing, :);
+                end
+                VN = VN ./ max(vecnorm(VN,2,2), eps);
             end
 
-            mesh = struct('V', verts, 'F', faces, 'VN', VN, 'VertexColor', vertexColor);
+            vertexColor = [];
+            if isempty(tex.Image) || isempty(UV) || all(isnan(UV(:)))
+                vertexColor = repmat([0.7 0.75 0.85], size(Vnew,1), 1);
+            end
+
+            mesh = struct('V', Vnew, 'F', Fnew, 'VN', VN, 'UV', UV, 'VertexColor', vertexColor);
         end
 
-        function faces = triangulateFace(faces, idxs)
-            %TRIANGULATEFACE Fan-triangulates polygon faces.
-            faces(end+1, :) = idxs(1:3);
-            if numel(idxs) > 3
-                for m = 4:numel(idxs)
-                    faces(end+1, :) = [idxs(1), idxs(m-1), idxs(m)];
-                end
+        function [triFaces, triTex, triNorm] = triangulateFace(vIdx, tIdx, nIdx)
+            %TRIANGULATEFACE Fan-triangulates polygon faces and keeps UV/normal indices aligned.
+            triFaces = [];
+            triTex = {};
+            triNorm = {};
+            if numel(vIdx) < 3 || any(isnan(vIdx))
+                return;
+            end
+            numTri = numel(vIdx) - 2;
+            for m = 1:numTri
+                triFaces(end+1, :) = [vIdx(1), vIdx(m+1), vIdx(m+2)]; %#ok<AGROW>
+                triTex{end+1} = ObjModelViewer.pickFaceIndices(tIdx, [1, m+1, m+2]); %#ok<AGROW>
+                triNorm{end+1} = ObjModelViewer.pickFaceIndices(nIdx, [1, m+1, m+2]); %#ok<AGROW>
             end
         end
 
@@ -237,6 +266,74 @@ classdef ObjModelViewer
             counts(counts==0) = 1;
             VN = VN ./ counts;
             VN = VN ./ max(vecnorm(VN,2,2), eps);
+        end
+
+        function [Vnew, Fnew, UVnew, VNnew] = buildMeshWithUV(verts, faces, faceTex, texCoords, faceNorm, normals)
+            %BUILDMESHWITHUV Duplicates vertices where UV/normal seams occur.
+            keyMap = containers.Map('KeyType','char','ValueType','double');
+            Vnew = [];
+            UVnew = [];
+            VNnew = [];
+            Fnew = zeros(size(faces));
+            for f = 1:size(faces,1)
+                for k = 1:3
+                    vi = faces(f,k);
+                    ti = ObjModelViewer.safeIndex(faceTex, f, k);
+                    ni = ObjModelViewer.safeIndex(faceNorm, f, k);
+                    key = sprintf('%d_%d_%d', vi, ObjModelViewer.nanToKey(ti), ObjModelViewer.nanToKey(ni));
+                    if isKey(keyMap, key)
+                        idx = keyMap(key);
+                    else
+                        Vnew(end+1, :) = verts(vi, :); %#ok<AGROW>
+                        if ~isnan(ti) && ti >= 1 && ti <= size(texCoords,1)
+                            UVnew(end+1, :) = texCoords(ti, :); %#ok<AGROW>
+                        else
+                            UVnew(end+1, :) = [NaN NaN]; %#ok<AGROW>
+                        end
+                        if ~isnan(ni) && ni >=1 && ni <= size(normals,1)
+                            VNnew(end+1, :) = normals(ni, :); %#ok<AGROW>
+                        else
+                            VNnew(end+1, :) = [NaN NaN NaN]; %#ok<AGROW>
+                        end
+                        idx = size(Vnew,1);
+                        keyMap(key) = idx;
+                    end
+                    Fnew(f,k) = idx;
+                end
+            end
+        end
+
+        function out = safeIndex(cellArr, f, k)
+            out = NaN;
+            if isempty(cellArr) || numel(cellArr) < f || isempty(cellArr{f})
+                return;
+            end
+            if numel(cellArr{f}) < k
+                return;
+            end
+            out = cellArr{f}(k);
+        end
+
+        function val = nanToKey(x)
+            if isnan(x)
+                val = 0;
+            else
+                val = x;
+            end
+        end
+
+        function vals = pickFaceIndices(source, triIdx)
+            %PICKFACEINDICES Extracts selected indices or fills with NaN when missing.
+            vals = nan(1, numel(triIdx));
+            if isempty(source)
+                return;
+            end
+            for i = 1:numel(triIdx)
+                idx = triIdx(i);
+                if idx <= numel(source)
+                    vals(i) = source(idx);
+                end
+            end
         end
     end
 end
