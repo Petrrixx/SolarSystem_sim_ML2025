@@ -566,18 +566,27 @@ classdef SolarSystemApp < handle
         function fact = fetchFact(obj, bodyName)
             key = lower(char(bodyName));
             if isKey(obj.FactsCache, key)
-                fact = obj.FactsCache(key);
-                return;
+                cached = obj.FactsCache(key);
+                if ~startsWith(cached, "No extra fact")
+                    fact = cached;
+                    return;
+                end
             end
             fact = "";
             try
                 encoded = char(matlab.net.URI.encode(string(bodyName)));
                 url = sprintf('https://en.wikipedia.org/api/rest_v1/page/summary/%s', encoded);
-                opts = weboptions('Timeout', 4);
+                opts = weboptions('Timeout', 5, ...
+                                  'UserAgent', 'SolarSystemSim/1.0 (educational app)', ...
+                                  'ContentType', 'json');
                 resp = webread(url, opts);
                 if isfield(resp, 'extract') && strlength(string(resp.extract)) > 0
                     fact = string(resp.extract);
-                    % keep it short (~2 sentences)
+                elseif isfield(resp, 'description') && strlength(string(resp.description)) > 0
+                    fact = string(resp.description);
+                end
+                % keep it short (~2 sentences)
+                if strlength(fact) > 0
                     parts = split(fact, '. ');
                     if numel(parts) > 2
                         fact = strjoin(parts(1:2), '. ');
@@ -591,8 +600,9 @@ classdef SolarSystemApp < handle
             end
             if strlength(fact) == 0
                 fact = "No extra fact available right now.";
+            else
+                obj.FactsCache(key) = fact; % cache only real facts
             end
-            obj.FactsCache(key) = fact;
         end
 
         function updateTimeLabels(obj)
