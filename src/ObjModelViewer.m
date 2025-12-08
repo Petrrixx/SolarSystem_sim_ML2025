@@ -15,28 +15,11 @@ classdef ObjModelViewer
             fig = figure('Name', sprintf('%s 3D Model', titleText), ...
                 'Color', [0 0 0], 'ToolBar', 'figure', 'MenuBar', 'figure');
             ax = axes('Parent', fig, 'Color', [0 0 0]);
-            useTexture = ~isempty(tex.Image) && isfield(mesh, 'UV') && ~isempty(mesh.UV) && ~all(isnan(mesh.UV(:)));
-            if useTexture
-                uv = mesh.UV;
-                uv(:,2) = 1 - uv(:,2); % flip V to match image origin
-                uv(isnan(uv)) = 0;
-                uv = min(max(uv, 0), 1);
-                uv3 = [uv, zeros(size(uv,1),1)]; % patch expects Nx3 for FaceVertexCData
-                p = patch(ax, 'Vertices', mesh.V, 'Faces', mesh.F, ...
-                    'FaceVertexCData', uv3, ...
-                    'FaceColor', 'texturemap', ...
-                    'EdgeColor', 'none', ...
-                    'CData', tex.Image, ...
-                    'CDataMapping', 'direct', ...
-                    'VertexNormals', mesh.VN, ...
-                    'BackFaceLighting', 'reverselit');
-            else
-                p = patch(ax, 'Vertices', mesh.V, 'Faces', mesh.F, ...
-                    'FaceColor', 'interp', 'EdgeColor', 'none', ...
-                    'FaceVertexCData', mesh.VertexColor, ...
-                    'VertexNormals', mesh.VN, ...
-                    'BackFaceLighting', 'reverselit');
-            end
+            p = patch(ax, 'Vertices', mesh.V, 'Faces', mesh.F, ...
+                'FaceColor', 'interp', 'EdgeColor', 'none', ...
+                'FaceVertexCData', mesh.VertexColor, ...
+                'VertexNormals', mesh.VN, ...
+                'BackFaceLighting', 'reverselit');
             axis(ax, 'equal');
             axis(ax, 'vis3d');
             grid(ax, 'on');
@@ -136,8 +119,8 @@ classdef ObjModelViewer
                 VN = VN ./ max(vecnorm(VN,2,2), eps);
             end
 
-            vertexColor = [];
-            if isempty(tex.Image) || isempty(UV) || all(isnan(UV(:)))
+            vertexColor = ObjModelViewer.assignVertexColorsUV(UV, tex);
+            if isempty(vertexColor)
                 vertexColor = repmat([0.7 0.75 0.85], size(Vnew,1), 1);
             end
 
@@ -198,40 +181,6 @@ classdef ObjModelViewer
             end
         end
 
-        function vertexColor = assignVertexColors(faces, faceTex, texCoords, tex)
-            if isempty(tex.Image) || isempty(texCoords)
-                vertexColor = [];
-                return;
-            end
-            numVerts = max(faces(:));
-            acc = zeros(numVerts, 3);
-            counts = zeros(numVerts, 1);
-            img = tex.Image;
-            h = size(img,1); w = size(img,2);
-
-            for f = 1:size(faces,1)
-                vIdx = faces(f,:);
-                if numel(faceTex) < f || isempty(faceTex{f}) || all(isnan(faceTex{f}))
-                    continue;
-                end
-                tIdx = faceTex{f};
-                tIdx = tIdx(~isnan(tIdx));
-                if numel(tIdx) ~= numel(vIdx)
-                    continue;
-                end
-                for k = 1:numel(vIdx)
-                    uv = texCoords(tIdx(k), :);
-                    u = uv(1); v = uv(2);
-                    x = max(1, min(w, round(u * (w-1) + 1)));
-                    y = max(1, min(h, round((1 - v) * (h-1) + 1)));
-                    acc(vIdx(k), :) = acc(vIdx(k), :) + reshape(img(y, x, 1:3), [1 3]);
-                    counts(vIdx(k)) = counts(vIdx(k)) + 1;
-                end
-            end
-            counts(counts==0) = 1;
-            vertexColor = acc ./ counts;
-        end
-
         function VN = computeNormals(V, F)
             %COMPUTENORMALS approximate per-vertex normals.
             VN = zeros(size(V));
@@ -267,6 +216,26 @@ classdef ObjModelViewer
             counts(counts==0) = 1;
             VN = VN ./ counts;
             VN = VN ./ max(vecnorm(VN,2,2), eps);
+        end
+
+        function vertexColor = assignVertexColorsUV(UV, tex)
+            if isempty(tex.Image) || isempty(UV) || all(isnan(UV(:)))
+                vertexColor = [];
+                return;
+            end
+            img = tex.Image;
+            h = size(img,1); w = size(img,2);
+            % flip V because OBJ origin differs from image origin
+            u = UV(:,1);
+            v = 1 - UV(:,2);
+            u(isnan(u)) = 0; v(isnan(v)) = 0;
+            u = min(max(u, 0), 1);
+            v = min(max(v, 0), 1);
+            x = max(1, min(w, round(u .* (w-1) + 1)));
+            y = max(1, min(h, round(v .* (h-1) + 1)));
+            idx = sub2ind([h, w], y, x);
+            col = reshape(img, [], 3);
+            vertexColor = col(idx, :);
         end
 
         function [Vnew, Fnew, UVnew, VNnew] = buildMeshWithUV(verts, faces, faceTex, texCoords, faceNorm, normals)
