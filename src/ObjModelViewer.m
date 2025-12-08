@@ -39,7 +39,8 @@ classdef ObjModelViewer
             zoom(fig, 'on');    % allow scroll or toolbar to zoom
 
             spinRateDeg = ObjModelViewer.defaultSpinRate(titleText); % deg/sec
-            spinTimer = ObjModelViewer.startAutoSpin(tform, spinRateDeg);
+            spinAxis = ObjModelViewer.defaultSpinAxis(titleText);    % unit axis
+            spinTimer = ObjModelViewer.startAutoSpin(tform, spinRateDeg, spinAxis);
             setappdata(fig, 'AutoRotateTimer', spinTimer);
         end
     end
@@ -371,24 +372,29 @@ classdef ObjModelViewer
             end
         end
 
-        function spinTimer = startAutoSpin(tform, rateDegPerSec)
+        function spinTimer = startAutoSpin(tform, rateDegPerSec, axisVec)
             if rateDegPerSec == 0
                 spinTimer = [];
                 return;
             end
+            if nargin < 3 || isempty(axisVec)
+                axisVec = [0 1 0];
+            end
+            axisVec = axisVec / max(norm(axisVec), eps);
             period = 0.03;
             spinTimer = timer('ExecutionMode', 'fixedSpacing', ...
                               'Period', period, ...
-                              'TimerFcn', @(src, evt) ObjModelViewer.spinStep(tform, rateDegPerSec, period));
+                              'TimerFcn', @(src, evt) ObjModelViewer.spinStep(tform, rateDegPerSec, period, axisVec));
             start(spinTimer);
         end
 
-        function spinStep(tform, rateDegPerSec, period)
+        function spinStep(tform, rateDegPerSec, period, axisVec)
             if ~isgraphics(tform)
                 return;
             end
             rad = deg2rad(rateDegPerSec * period);
-            tform.Matrix = makehgtform('zrotate', rad) * tform.Matrix;
+            rot = makehgtform('axisrotate', axisVec, rad);
+            tform.Matrix = rot * tform.Matrix;
         end
 
         function onCloseFigure(fig)
@@ -426,6 +432,19 @@ classdef ObjModelViewer
                 otherwise
                     rate = 20;
             end
+        end
+
+        function axisVec = defaultSpinAxis(name)
+            %DEFAULTSPINAXIS Approximate rotation axis; Y-up fits OBJ export better.
+            axisVec = [0 1 0];
+            name = lower(string(name));
+            switch name
+                case {"uranus"}
+                    axisVec = [0.1 1 0]; % slight tilt suggestion
+                otherwise
+                    % keep Y-up
+            end
+            axisVec = axisVec / max(norm(axisVec), eps);
         end
 
         function vals = pickFaceIndices(source, triIdx)
