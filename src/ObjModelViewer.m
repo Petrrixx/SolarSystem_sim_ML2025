@@ -108,8 +108,8 @@ classdef ObjModelViewer
 
             tex = ObjModelViewer.readMtl(path, mtlFile);
             [Vnew, Fnew, UV, VN] = ObjModelViewer.buildMeshWithUV(verts, faces, faceTex, texCoords, faceNorm, normals);
-            % Subdivide once to increase vertex density so texture sampling looks sharper.
-            [Vnew, Fnew, UV, VN] = ObjModelViewer.subdivideMesh(Vnew, Fnew, UV, VN, 1);
+            subdivLevels = isempty(tex.Image) * 0 + ~isempty(tex.Image) * 2; % more verts for crisper texture
+            [Vnew, Fnew, UV, VN] = ObjModelViewer.subdivideMesh(Vnew, Fnew, UV, VN, subdivLevels);
             if isempty(VN)
                 VN = ObjModelViewer.computeNormals(Vnew, Fnew);
             else
@@ -233,11 +233,13 @@ classdef ObjModelViewer
             u(isnan(u)) = 0; v(isnan(v)) = 0;
             u = min(max(u, 0), 1);
             v = min(max(v, 0), 1);
-            x = max(1, min(w, round(u .* (w-1) + 1)));
-            y = max(1, min(h, round(v .* (h-1) + 1)));
-            idx = sub2ind([h, w], y, x);
-            col = reshape(img, [], 3);
-            vertexColor = col(idx, :);
+            x = u .* (w-1) + 1;
+            y = v .* (h-1) + 1;
+            % bilinear sample for smoother texture
+            r = interp2(1:w, 1:h, img(:,:,1), x, y, 'linear', 0);
+            g = interp2(1:w, 1:h, img(:,:,2), x, y, 'linear', 0);
+            b = interp2(1:w, 1:h, img(:,:,3), x, y, 'linear', 0);
+            vertexColor = [r(:), g(:), b(:)];
         end
 
         function [Vnew, Fnew, UVnew, VNnew] = buildMeshWithUV(verts, faces, faceTex, texCoords, faceNorm, normals)
