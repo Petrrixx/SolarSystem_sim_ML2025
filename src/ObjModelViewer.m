@@ -128,6 +128,10 @@ classdef ObjModelViewer
                 VN = VN ./ max(vecnorm(VN,2,2), eps);
             end
 
+            % Center model at origin so auto-rotation stays around its own axis.
+            center = mean(Vnew, 1, 'omitnan');
+            Vnew = Vnew - center;
+
             vertexColor = ObjModelViewer.assignVertexColorsUV(UV, tex);
             if isempty(vertexColor)
                 vertexColor = repmat([0.7 0.75 0.85], size(Vnew,1), 1);
