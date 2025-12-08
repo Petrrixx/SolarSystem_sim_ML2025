@@ -7,7 +7,7 @@ classdef SolarSystemApp < handle
         ProjectRoot string
         AssetsRoot string
 
-        Bodies (1,:) CelestialBody
+        Bodies cell
         NameToIndex containers.Map
         BodyLoader BodyDataLoader
         SpriteManager SpriteManager
@@ -130,7 +130,8 @@ classdef SolarSystemApp < handle
             obj.TrailsCheckBox.Layout.Row = 5;
             obj.TrailsCheckBox.FontColor = [0.9 0.9 0.9];
 
-            obj.BodyDropdown = uidropdown(controlLayout, 'Items', {obj.Bodies.Name}, ...
+            names = cellfun(@(b) char(b.Name), obj.Bodies, 'UniformOutput', false);
+            obj.BodyDropdown = uidropdown(controlLayout, 'Items', names, ...
                 'ItemsData', num2cell(1:numel(obj.Bodies)), ...
                 'ValueChangedFcn', @(src, evt) obj.onSelectBody(evt.Value));
             obj.BodyDropdown.Layout.Row = 6;
@@ -166,7 +167,7 @@ classdef SolarSystemApp < handle
             %POPULATEBODYTABLE Fill uitable with static parameters.
             data = cell(numel(obj.Bodies), 5);
             for idx = 1:numel(obj.Bodies)
-                b = obj.Bodies(idx);
+                b = obj.Bodies{idx};
                 data{idx,1} = char(b.Name);
                 data{idx,2} = char(b.BodyType);
                 data{idx,3} = char(b.CentralBodyName);
@@ -192,7 +193,8 @@ classdef SolarSystemApp < handle
             obj.RelativeOrbitY = cell(numBodies,1);
             obj.OrbitParents = nan(numBodies,1);
 
-            maxSemiMajor = max([obj.Bodies.SemiMajorAxisAU] .* [obj.Bodies.OrbitScale]);
+            semiScaled = cellfun(@(b) b.SemiMajorAxisAU .* b.OrbitScale, obj.Bodies);
+            maxSemiMajor = max(semiScaled);
             axesLimit = maxSemiMajor * obj.DistanceScale * 1.45;
             axis(obj.Axes, [-axesLimit axesLimit -axesLimit axesLimit]);
             obj.InitialAxesLimit = axesLimit;
@@ -208,7 +210,7 @@ classdef SolarSystemApp < handle
             trailColors = lines(numBodies);
 
             for idx = 1:numBodies
-                b = obj.Bodies(idx);
+                b = obj.Bodies{idx};
                 if b.SemiMajorAxisAU > 0
                     aScaled = b.SemiMajorAxisAU * b.OrbitScale;
                     bSemi = aScaled * sqrt(1 - b.Eccentricity^2);
@@ -269,11 +271,11 @@ classdef SolarSystemApp < handle
             currentPositions = zeros(numBodies, 2);
 
             for idx = 1:numBodies
-                currentPositions(idx,:) = obj.Bodies(idx).positionAtTime(obj.SimTime);
+                currentPositions(idx,:) = obj.Bodies{idx}.positionAtTime(obj.SimTime);
             end
 
             for idx = 1:numBodies
-                b = obj.Bodies(idx);
+                b = obj.Bodies{idx};
                 if strlength(b.CentralBodyName) > 0 && isKey(obj.NameToIndex, char(b.CentralBodyName))
                     parentIdx = obj.NameToIndex(char(b.CentralBodyName));
                     currentPositions(idx,:) = currentPositions(idx,:) + currentPositions(parentIdx,:);
@@ -284,8 +286,8 @@ classdef SolarSystemApp < handle
             obj.LatestScaledPositions = scaledPositions;
 
             for idx = 1:numBodies
-                w = obj.Bodies(idx).DisplayHalfX;
-                h = obj.Bodies(idx).DisplayHalfY;
+                w = obj.Bodies{idx}.DisplayHalfX;
+                h = obj.Bodies{idx}.DisplayHalfY;
                 set(obj.SpriteHandles(idx), 'XData', scaledPositions(idx,1) + [-w, w], ...
                     'YData', scaledPositions(idx,2) + [-h, h]);
 
@@ -381,7 +383,7 @@ classdef SolarSystemApp < handle
         end
 
         function updateInfoText(obj, idx, currentPos)
-            b = obj.Bodies(idx);
+            b = obj.Bodies{idx};
             distanceAU = norm(currentPos);
             obj.InfoTextArea.Value = { ...
                 sprintf('%s (%s)', b.Name, b.BodyType), ...
@@ -463,7 +465,7 @@ classdef SolarSystemApp < handle
         end
 
         function updateModelButtonState(obj, idx)
-            b = obj.Bodies(idx);
+            b = obj.Bodies{idx};
             if isfile(obj.modelPathForBody(b))
                 obj.ShowModelButton.Enable = 'on';
             else
@@ -476,7 +478,7 @@ classdef SolarSystemApp < handle
             if isempty(idx)
                 return;
             end
-            b = obj.Bodies(idx);
+            b = obj.Bodies{idx};
             modelPath = obj.modelPathForBody(b);
             if ~isfile(modelPath)
                 uialert(obj.Figure, sprintf('3D model not found: %s', modelPath), 'Model missing');

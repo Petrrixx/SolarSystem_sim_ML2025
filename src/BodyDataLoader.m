@@ -24,8 +24,8 @@ classdef BodyDataLoader
             rawText = fileread(obj.DataFilePath);
             decoded = jsondecode(rawText);
 
-            bodies = BodyDataLoader.instantiateBodies(decoded);
-            names = {bodies.Name};
+            bodies = BodyDataLoader.instantiateBodies(decoded); % cell array
+            names = cellfun(@(b) char(b.Name), bodies, 'UniformOutput', false);
             nameToIndex = containers.Map(names, 1:numel(bodies));
         end
     end
@@ -46,7 +46,7 @@ classdef BodyDataLoader
                         tmp{idx} = CelestialBody(entry);
                 end
             end
-            bodies = [tmp{:}];
+            bodies = tmp; % cell array to allow heterogeneous subclasses
         end
     end
 end
