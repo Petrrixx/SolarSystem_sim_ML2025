@@ -87,7 +87,7 @@ classdef SolarSystemApp < handle
         function createUI(obj)
             %CREATEUI Build the figure, axes, and control widgets.
             obj.Figure = uifigure('Name', 'Solar System GUI', 'Color', [0 0 0], ...
-                                  'Position', [100 100 1200 750]);
+                                  'Position', [80 80 1300 850]);
             obj.Figure.CloseRequestFcn = @(src, evt) obj.onClose();
             obj.Figure.WindowButtonDownFcn = @(src, evt) obj.onClick(evt);
             obj.Figure.WindowScrollWheelFcn = @(src, evt) obj.onScroll(evt);
@@ -113,8 +113,9 @@ classdef SolarSystemApp < handle
             controlPanel.Layout.Row = 1;
             controlPanel.Layout.Column = 2;
             controlLayout = uigridlayout(controlPanel, [12 1]);
-            controlLayout.RowHeight = {32, 40, 32, 32, 40, 36, 28, 22, 22, 22, 110, '1x'};
-            controlLayout.Padding = [12 12 12 12];
+            controlLayout.RowHeight = {32, 40, 30, 26, 30, 32, 24, 20, 20, 20, 110, '1x'};
+            controlLayout.Padding = [10 10 10 10];
+            controlLayout.RowSpacing = 4;
 
             obj.PlayButton = uibutton(controlLayout, 'Text', 'Pause', ...
                 'ButtonPushedFcn', @(src, evt) obj.onTogglePlay());
@@ -127,6 +128,8 @@ classdef SolarSystemApp < handle
             obj.SpeedSlider = uislider(controlLayout, 'Limits', [10 500], ...
                 'Value', obj.TimeSpeedFactor, 'ValueChangingFcn', @(src, evt) obj.onSpeedChanging(evt), ...
                 'ValueChangedFcn', @(src, evt) obj.onSpeedChanged(src.Value));
+            obj.SpeedSlider.MajorTicks = 10:50:500;
+            obj.SpeedSlider.MinorTicks = [];
             obj.SpeedSlider.Layout.Row = 3;
 
             obj.OrbitsCheckBox = uicheckbox(controlLayout, 'Text', 'Show Orbits', ...
