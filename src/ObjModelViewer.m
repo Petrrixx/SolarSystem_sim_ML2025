@@ -108,6 +108,8 @@ classdef ObjModelViewer
 
             tex = ObjModelViewer.readMtl(path, mtlFile);
             [Vnew, Fnew, UV, VN] = ObjModelViewer.buildMeshWithUV(verts, faces, faceTex, texCoords, faceNorm, normals);
+            % Subdivide once to increase vertex density so texture sampling looks sharper.
+            [Vnew, Fnew, UV, VN] = ObjModelViewer.subdivideMesh(Vnew, Fnew, UV, VN, 1);
             if isempty(VN)
                 VN = ObjModelViewer.computeNormals(Vnew, Fnew);
             else
@@ -289,6 +291,70 @@ classdef ObjModelViewer
                 val = 0;
             else
                 val = x;
+            end
+        end
+
+        function [V, F, UV, VN] = subdivideMesh(V, F, UV, VN, levels)
+            %SUBDIVIDEMESH Uniformly splits each triangle into 4 to raise vertex density.
+            if nargin < 5
+                levels = 0;
+            end
+            for lvl = 1:levels
+                edgeMap = containers.Map('KeyType','char','ValueType','double');
+                newV = V;
+                newUV = UV;
+                newVN = VN;
+                newF = zeros(size(F,1)*4, 3);
+                nf = 1;
+                for f = 1:size(F,1)
+                    a = F(f,1); b = F(f,2); c = F(f,3);
+                    [ab, edgeMap, newV, newUV, newVN] = ObjModelViewer.midpoint(a, b, V, UV, VN, edgeMap, newV, newUV, newVN);
+                    [bc, edgeMap, newV, newUV, newVN] = ObjModelViewer.midpoint(b, c, V, UV, VN, edgeMap, newV, newUV, newVN);
+                    [ca, edgeMap, newV, newUV, newVN] = ObjModelViewer.midpoint(c, a, V, UV, VN, edgeMap, newV, newUV, newVN);
+                    newF(nf,:) = [a, ab, ca]; nf = nf + 1;
+                    newF(nf,:) = [ab, b, bc]; nf = nf + 1;
+                    newF(nf,:) = [ca, bc, c]; nf = nf + 1;
+                    newF(nf,:) = [ab, bc, ca]; nf = nf + 1;
+                end
+                V = newV; UV = newUV; VN = newVN; F = newF;
+            end
+        end
+
+        function [midIdx, edgeMap, V, UV, VN] = midpoint(i1, i2, Vorig, UVorig, VNorig, edgeMap, V, UV, VN)
+            key = ObjModelViewer.edgeKey(i1, i2);
+            if isKey(edgeMap, key)
+                midIdx = edgeMap(key);
+                return;
+            end
+            Vmid = (Vorig(i1,:) + Vorig(i2,:)) / 2;
+            if isempty(UVorig)
+                UVmid = [NaN NaN];
+            else
+                UVmid = mean([UVorig(i1,:); UVorig(i2,:)], 1, 'omitnan');
+                if any(isnan(UVmid))
+                    UVmid = [NaN NaN];
+                end
+            end
+            if isempty(VNorig)
+                VNmid = [NaN NaN NaN];
+            else
+                VNmid = mean([VNorig(i1,:); VNorig(i2,:)], 1, 'omitnan');
+                if any(isnan(VNmid))
+                    VNmid = [NaN NaN NaN];
+                end
+            end
+            V(end+1,:) = Vmid;
+            UV(end+1,:) = UVmid;
+            VN(end+1,:) = VNmid;
+            midIdx = size(V,1);
+            edgeMap(key) = midIdx;
+        end
+
+        function key = edgeKey(a, b)
+            if a < b
+                key = sprintf('%d_%d', a, b);
+            else
+                key = sprintf('%d_%d', b, a);
             end
         end
 
