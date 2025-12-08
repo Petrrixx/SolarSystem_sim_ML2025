@@ -406,7 +406,7 @@ classdef SolarSystemApp < handle
                 };
             fact = obj.fetchFact(b.Name);
             if strlength(fact) > 0
-                lines = [lines; ""; "Fact:"; fact]; %#ok<AGROW>
+                lines = [lines; {''; 'Fact:'; char(fact)}]; %#ok<AGROW>
             end
             obj.InfoTextArea.Value = lines;
         end
