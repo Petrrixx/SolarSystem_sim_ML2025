@@ -14,12 +14,15 @@ classdef ObjModelViewer
             [mesh, tex] = ObjModelViewer.readObj(modelPath);
             fig = figure('Name', sprintf('%s 3D Model', titleText), ...
                 'Color', [0 0 0], 'ToolBar', 'figure', 'MenuBar', 'figure');
+            fig.CloseRequestFcn = @(src, evt) ObjModelViewer.onCloseFigure(src);
             ax = axes('Parent', fig, 'Color', [0 0 0]);
+            tform = hgtransform('Parent', ax);
             p = patch(ax, 'Vertices', mesh.V, 'Faces', mesh.F, ...
                 'FaceColor', 'interp', 'EdgeColor', 'none', ...
                 'FaceVertexCData', mesh.VertexColor, ...
                 'VertexNormals', mesh.VN, ...
-                'BackFaceLighting', 'reverselit');
+                'BackFaceLighting', 'reverselit', ...
+                'Parent', tform);
             axis(ax, 'equal');
             axis(ax, 'vis3d');
             grid(ax, 'on');
@@ -34,6 +37,10 @@ classdef ObjModelViewer
             title(ax, sprintf('%s 3D Model', titleText), 'Color', [0.95 0.95 0.95]);
             rotate3d(ax, 'on'); % allow dragging to rotate
             zoom(fig, 'on');    % allow scroll or toolbar to zoom
+
+            spinRateDeg = ObjModelViewer.defaultSpinRate(titleText); % deg/sec
+            spinTimer = ObjModelViewer.startAutoSpin(tform, spinRateDeg);
+            setappdata(fig, 'AutoRotateTimer', spinTimer);
         end
     end
 
@@ -357,6 +364,63 @@ classdef ObjModelViewer
                 key = sprintf('%d_%d', a, b);
             else
                 key = sprintf('%d_%d', b, a);
+            end
+        end
+
+        function spinTimer = startAutoSpin(tform, rateDegPerSec)
+            if rateDegPerSec == 0
+                spinTimer = [];
+                return;
+            end
+            period = 0.03;
+            spinTimer = timer('ExecutionMode', 'fixedSpacing', ...
+                              'Period', period, ...
+                              'TimerFcn', @(src, evt) ObjModelViewer.spinStep(tform, rateDegPerSec, period));
+            start(spinTimer);
+        end
+
+        function spinStep(tform, rateDegPerSec, period)
+            if ~isgraphics(tform)
+                return;
+            end
+            rad = deg2rad(rateDegPerSec * period);
+            tform.Matrix = makehgtform('zrotate', rad) * tform.Matrix;
+        end
+
+        function onCloseFigure(fig)
+            t = getappdata(fig, 'AutoRotateTimer');
+            if ~isempty(t) && isvalid(t)
+                stop(t);
+                delete(t);
+            end
+            delete(fig);
+        end
+
+        function rate = defaultSpinRate(name)
+            name = lower(string(name));
+            switch name
+                case "venus"
+                    rate = -15; % retrograde-ish
+                case "uranus"
+                    rate = 25; % tilted, but modest
+                case "mercury"
+                    rate = 8;
+                case "earth"
+                    rate = 30;
+                case "mars"
+                    rate = 30;
+                case "jupiter"
+                    rate = 80;
+                case "saturn"
+                    rate = 60;
+                case "neptune"
+                    rate = 50;
+                case "sun"
+                    rate = 10;
+                case "moon"
+                    rate = 5;
+                otherwise
+                    rate = 20;
             end
         end
 

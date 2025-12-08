@@ -24,6 +24,7 @@ classdef SolarSystemApp < handle
         InfoTextArea
         BodyTable
         ShowModelButton
+        ResetButton
 
         BackgroundHandle
         OrbitHandles
@@ -39,9 +40,11 @@ classdef SolarSystemApp < handle
         LastTick
         DistanceScale double = 1.3
         TimeSpeedFactor double = 200
+        DefaultTimeSpeed double = 200
         Running logical = true
         SelectedBodyIndex double = 1
         InitialAxesLimit double = 0
+        FactsCache containers.Map
     end
 
     methods
@@ -51,6 +54,7 @@ classdef SolarSystemApp < handle
             obj.BodyLoader = BodyDataLoader();
             [obj.Bodies, obj.NameToIndex] = obj.BodyLoader.loadBodies();
             obj.SpriteManager = SpriteManager(obj.AssetsRoot);
+            obj.FactsCache = containers.Map('KeyType','char','ValueType','any');
 
             obj.createUI();
             obj.populateBodyTable();
@@ -103,8 +107,8 @@ classdef SolarSystemApp < handle
                 'BackgroundColor', [0.05 0.05 0.1]);
             controlPanel.Layout.Row = 1;
             controlPanel.Layout.Column = 2;
-            controlLayout = uigridlayout(controlPanel, [8 1]);
-            controlLayout.RowHeight = {32, 40, 32, 32, 40, 36, 110, '1x'};
+            controlLayout = uigridlayout(controlPanel, [9 1]);
+            controlLayout.RowHeight = {32, 40, 32, 32, 40, 36, 36, 110, '1x'};
             controlLayout.Padding = [12 12 12 12];
 
             obj.PlayButton = uibutton(controlLayout, 'Text', 'Pause', ...
@@ -140,9 +144,13 @@ classdef SolarSystemApp < handle
                 'Enable', 'off', 'ButtonPushedFcn', @(src, evt) obj.onShowModel());
             obj.ShowModelButton.Layout.Row = 7;
 
+            obj.ResetButton = uibutton(controlLayout, 'Text', 'Reset View', ...
+                'ButtonPushedFcn', @(src, evt) obj.onReset());
+            obj.ResetButton.Layout.Row = 8;
+
             obj.InfoTextArea = uitextarea(controlLayout, 'Editable', 'off', ...
                 'Value', {'Select a body to see info.'});
-            obj.InfoTextArea.Layout.Row = 8;
+            obj.InfoTextArea.Layout.Row = 9;
             obj.InfoTextArea.FontColor = [0.95 0.95 0.95];
             obj.InfoTextArea.BackgroundColor = [0.1 0.1 0.15];
 
@@ -385,7 +393,7 @@ classdef SolarSystemApp < handle
         function updateInfoText(obj, idx, currentPos)
             b = obj.Bodies{idx};
             distanceAU = norm(currentPos);
-            obj.InfoTextArea.Value = { ...
+            lines = { ...
                 sprintf('%s (%s)', b.Name, b.BodyType), ...
                 sprintf('Central body: %s', ternary(strlength(b.CentralBodyName)>0, b.CentralBodyName, "None")), ...
                 sprintf('Semi-major axis: %.4g AU', b.SemiMajorAxisAU), ...
@@ -396,6 +404,11 @@ classdef SolarSystemApp < handle
                 '', ...
                 char(b.Description) ...
                 };
+            fact = obj.fetchFact(b.Name);
+            if strlength(fact) > 0
+                lines = [lines; ""; "Fact:"; fact]; %#ok<AGROW>
+            end
+            obj.InfoTextArea.Value = lines;
         end
 
         function zoomToBody(obj, idx)
@@ -496,6 +509,67 @@ classdef SolarSystemApp < handle
         function onClose(obj)
             obj.stopTimer();
             delete(obj.Figure);
+        end
+
+        function onReset(obj)
+            % Reset controls and scene to defaults and clear trails/marks.
+            obj.TimeSpeedFactor = obj.DefaultTimeSpeed;
+            obj.SpeedSlider.Value = obj.DefaultTimeSpeed;
+            obj.SpeedLabel.Text = sprintf('Speed: %.0f days/sec', obj.TimeSpeedFactor);
+            obj.OrbitsCheckBox.Value = true;
+            obj.TrailsCheckBox.Value = false;
+            obj.Running = true;
+            obj.PlayButton.Text = 'Pause';
+            obj.SimTime = 0;
+            obj.LastTick = tic;
+            obj.BodyDropdown.Value = 1;
+            obj.SelectedBodyIndex = 1;
+            % reset axes limits
+            lim = obj.InitialAxesLimit;
+            xlim(obj.Axes, [-lim lim]); ylim(obj.Axes, [-lim lim]);
+            % clear trails
+            for k = 1:numel(obj.TrailHandles)
+                if isvalid(obj.TrailHandles(k))
+                    clearpoints(obj.TrailHandles(k));
+                    set(obj.TrailHandles(k), 'Visible', 'off');
+                end
+            end
+            % refresh positions and info
+            obj.onTick();
+            obj.updateInfoText(1, [0 0]);
+            obj.updateModelButtonState(1);
+        end
+
+        function fact = fetchFact(obj, bodyName)
+            key = lower(char(bodyName));
+            if isKey(obj.FactsCache, key)
+                fact = obj.FactsCache(key);
+                return;
+            end
+            fact = "";
+            try
+                encoded = char(matlab.net.URI.encode(string(bodyName)));
+                url = sprintf('https://en.wikipedia.org/api/rest_v1/page/summary/%s', encoded);
+                opts = weboptions('Timeout', 4);
+                resp = webread(url, opts);
+                if isfield(resp, 'extract') && strlength(string(resp.extract)) > 0
+                    fact = string(resp.extract);
+                    % keep it short (~2 sentences)
+                    parts = split(fact, '. ');
+                    if numel(parts) > 2
+                        fact = strjoin(parts(1:2), '. ');
+                        if ~endsWith(fact, ".")
+                            fact = fact + ".";
+                        end
+                    end
+                end
+            catch
+                % ignore network errors
+            end
+            if strlength(fact) == 0
+                fact = "No extra fact available right now.";
+            end
+            obj.FactsCache(key) = fact;
         end
     end
 end
