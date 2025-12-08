@@ -25,6 +25,9 @@ classdef SolarSystemApp < handle
         BodyTable
         ShowModelButton
         ResetButton
+        SimDayLabel
+        RealTimeLabel
+        RatioLabel
 
         BackgroundHandle
         OrbitHandles
@@ -37,6 +40,7 @@ classdef SolarSystemApp < handle
 
         SimTimer
         SimTime double = 0
+        StartWallTime datetime
         LastTick
         DistanceScale double = 1.3
         TimeSpeedFactor double = 200
@@ -55,6 +59,7 @@ classdef SolarSystemApp < handle
             [obj.Bodies, obj.NameToIndex] = obj.BodyLoader.loadBodies();
             obj.SpriteManager = SpriteManager(obj.AssetsRoot);
             obj.FactsCache = containers.Map('KeyType','char','ValueType','any');
+            obj.StartWallTime = datetime('now');
 
             obj.createUI();
             obj.populateBodyTable();
@@ -107,8 +112,8 @@ classdef SolarSystemApp < handle
                 'BackgroundColor', [0.05 0.05 0.1]);
             controlPanel.Layout.Row = 1;
             controlPanel.Layout.Column = 2;
-            controlLayout = uigridlayout(controlPanel, [9 1]);
-            controlLayout.RowHeight = {32, 40, 32, 32, 40, 36, 36, 110, '1x'};
+            controlLayout = uigridlayout(controlPanel, [12 1]);
+            controlLayout.RowHeight = {32, 40, 32, 32, 40, 36, 28, 22, 22, 22, 110, '1x'};
             controlLayout.Padding = [12 12 12 12];
 
             obj.PlayButton = uibutton(controlLayout, 'Text', 'Pause', ...
@@ -147,10 +152,20 @@ classdef SolarSystemApp < handle
             obj.ResetButton = uibutton(controlLayout, 'Text', 'Reset View', ...
                 'ButtonPushedFcn', @(src, evt) obj.onReset());
             obj.ResetButton.Layout.Row = 8;
+            obj.ResetButton.FontSize = 11;
+
+            obj.SimDayLabel = uilabel(controlLayout, 'Text', 'Sim days: 0.0', 'FontColor', [0.9 0.9 0.9]);
+            obj.SimDayLabel.Layout.Row = 9;
+
+            obj.RealTimeLabel = uilabel(controlLayout, 'Text', 'Real time: 0s', 'FontColor', [0.9 0.9 0.9]);
+            obj.RealTimeLabel.Layout.Row = 10;
+
+            obj.RatioLabel = uilabel(controlLayout, 'Text', 'Ratio 1s real : 0s sim', 'FontColor', [0.9 0.9 0.9]);
+            obj.RatioLabel.Layout.Row = 11;
 
             obj.InfoTextArea = uitextarea(controlLayout, 'Editable', 'off', ...
                 'Value', {'Select a body to see info.'});
-            obj.InfoTextArea.Layout.Row = 9;
+            obj.InfoTextArea.Layout.Row = 12;
             obj.InfoTextArea.FontColor = [0.95 0.95 0.95];
             obj.InfoTextArea.BackgroundColor = [0.1 0.1 0.15];
 
@@ -274,6 +289,7 @@ classdef SolarSystemApp < handle
             elapsed = toc(obj.LastTick);
             obj.LastTick = tic;
             obj.SimTime = obj.SimTime + elapsed * obj.TimeSpeedFactor;
+            obj.updateTimeLabels();
 
             numBodies = numel(obj.Bodies);
             currentPositions = zeros(numBodies, 2);
@@ -357,11 +373,13 @@ classdef SolarSystemApp < handle
         function onSpeedChanging(obj, evt)
             obj.TimeSpeedFactor = evt.Value;
             obj.SpeedLabel.Text = sprintf('Speed: %.0f days/sec', obj.TimeSpeedFactor);
+            obj.updateTimeLabels();
         end
 
         function onSpeedChanged(obj, value)
             obj.TimeSpeedFactor = value;
             obj.SpeedLabel.Text = sprintf('Speed: %.0f days/sec', obj.TimeSpeedFactor);
+            obj.updateTimeLabels();
         end
 
         function onToggleOrbits(obj)
@@ -521,6 +539,7 @@ classdef SolarSystemApp < handle
             obj.Running = true;
             obj.PlayButton.Text = 'Pause';
             obj.SimTime = 0;
+            obj.StartWallTime = datetime('now');
             obj.LastTick = tic;
             obj.BodyDropdown.Value = 1;
             obj.SelectedBodyIndex = 1;
@@ -538,6 +557,7 @@ classdef SolarSystemApp < handle
             obj.onTick();
             obj.updateInfoText(1, [0 0]);
             obj.updateModelButtonState(1);
+            obj.updateTimeLabels();
         end
 
         function fact = fetchFact(obj, bodyName)
@@ -570,6 +590,16 @@ classdef SolarSystemApp < handle
                 fact = "No extra fact available right now.";
             end
             obj.FactsCache(key) = fact;
+        end
+
+        function updateTimeLabels(obj)
+            %UPDATETIMELABELS refreshes simulation/real timers and ratio.
+            simDays = obj.SimTime;
+            realElapsed = seconds(datetime('now') - obj.StartWallTime);
+            simSecondsPerReal = obj.TimeSpeedFactor * 86400;
+            obj.SimDayLabel.Text = sprintf('Sim days: %.2f', simDays);
+            obj.RealTimeLabel.Text = sprintf('Real time: %s', char(seconds(realElapsed)));
+            obj.RatioLabel.Text = sprintf('Ratio 1s real : %.0fs sim', simSecondsPerReal);
         end
     end
 end
