@@ -125,7 +125,7 @@
     "spriteFile": "moon.png",
     "displayX": 0.07,
     "displayY": 0.07,
-    "orbitScale": 400.0,
+    "orbitScale": 80.0,
     "centralBody": "Earth",
     "description": "Earth's natural satellite."
   }

@@ -45,7 +45,6 @@ classdef CelestialBody
             semiMinor = obj.SemiMajorAxisAU * sqrt(1 - obj.Eccentricity^2);
             pos = [obj.SemiMajorAxisAU * (cos(eccentricAnomaly) - obj.Eccentricity), ...
                    semiMinor * sin(eccentricAnomaly)];
-            pos = pos .* obj.OrbitScale;
         end
     end
 

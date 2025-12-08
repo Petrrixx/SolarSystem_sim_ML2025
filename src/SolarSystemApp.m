@@ -271,14 +271,14 @@ classdef SolarSystemApp < handle
             currentPositions = zeros(numBodies, 2);
 
             for idx = 1:numBodies
-                currentPositions(idx,:) = obj.Bodies{idx}.positionAtTime(obj.SimTime);
-            end
-
-            for idx = 1:numBodies
+                basePos = obj.Bodies{idx}.positionAtTime(obj.SimTime);
                 b = obj.Bodies{idx};
+                scaledRelPos = basePos * b.OrbitScale; % display exaggeration for moons
                 if strlength(b.CentralBodyName) > 0 && isKey(obj.NameToIndex, char(b.CentralBodyName))
                     parentIdx = obj.NameToIndex(char(b.CentralBodyName));
-                    currentPositions(idx,:) = currentPositions(idx,:) + currentPositions(parentIdx,:);
+                    currentPositions(idx,:) = scaledRelPos + currentPositions(parentIdx,:);
+                else
+                    currentPositions(idx,:) = scaledRelPos;
                 end
             end
 
