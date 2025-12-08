@@ -575,28 +575,55 @@ classdef SolarSystemApp < handle
             fact = "";
             try
                 encoded = char(matlab.net.URI.encode(string(bodyName)));
-                url = sprintf('https://en.wikipedia.org/api/rest_v1/page/summary/%s', encoded);
-                opts = weboptions('Timeout', 5, ...
+                url = sprintf('https://en.wikipedia.org/api/rest_v1/page/summary/%s?redirect=true', encoded);
+                opts = weboptions('Timeout', 6, ...
                                   'UserAgent', 'SolarSystemSim/1.0 (educational app)', ...
-                                  'ContentType', 'json');
+                                  'ContentType', 'json', ...
+                                  'HeaderFields', {'accept','application/json'});
                 resp = webread(url, opts);
                 if isfield(resp, 'extract') && strlength(string(resp.extract)) > 0
                     fact = string(resp.extract);
                 elseif isfield(resp, 'description') && strlength(string(resp.description)) > 0
                     fact = string(resp.description);
                 end
-                % keep it short (~2 sentences)
-                if strlength(fact) > 0
-                    parts = split(fact, '. ');
-                    if numel(parts) > 2
-                        fact = strjoin(parts(1:2), '. ');
-                        if ~endsWith(fact, ".")
-                            fact = fact + ".";
+            catch
+                % ignore and try fallback
+            end
+
+            % fallback to classic API if REST failed
+            if strlength(fact) == 0
+                try
+                    apiUrl = 'https://en.wikipedia.org/w/api.php';
+                    params = {'action','query','prop','extracts','exsentences','2','explaintext','1','format','json','redirects','1','titles',bodyName};
+                    opts2 = weboptions('Timeout', 6, ...
+                                       'UserAgent', 'SolarSystemSim/1.0 (educational app)', ...
+                                       'ContentType', 'json', ...
+                                       'HeaderFields', {'accept','application/json'});
+                    resp2 = webread(apiUrl, params{:}, opts2);
+                    if isfield(resp2, 'query') && isfield(resp2.query, 'pages')
+                        pages = resp2.query.pages;
+                        keys = fieldnames(pages);
+                        if ~isempty(keys)
+                            page = pages.(keys{1});
+                            if isfield(page, 'extract')
+                                fact = string(page.extract);
+                            end
                         end
                     end
+                catch
+                    % ignore
                 end
-            catch
-                % ignore network errors
+            end
+
+            % keep it short (~2 sentences)
+            if strlength(fact) > 0
+                parts = split(fact, '. ');
+                if numel(parts) > 2
+                    fact = strjoin(parts(1:2), '. ');
+                    if ~endsWith(fact, ".")
+                        fact = fact + ".";
+                    end
+                end
             end
             if strlength(fact) == 0
                 fact = "No extra fact available right now.";
